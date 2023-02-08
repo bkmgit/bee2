@@ -1,0 +1,41 @@
+name: CI
+on:
+  push:
+    branches:
+      - main
+      - ci-test
+  pull_request:
+  
+jobs:
+  test:
+    name: fedora
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Setup Podman
+        run: |
+          sudo apt update
+          sudo apt-get -y install podman
+          podman pull fedora:rawhide
+      - name: Get source
+        uses: actions/checkout@v3
+        with:
+          path: 'bee2'
+      - name: Create container and run tests
+        run: |
+          {
+              echo 'FROM fedora:rawhide'
+              echo 'RUN dnf -y update'
+              echo 'RUN dnf -y install cmake clang coreutils doxygen sed'
+              echo 'RUN dnf clean all'
+              echo 'COPY bee2 bee2'
+              echo 'WORKDIR /bee2'
+              echo "RUN sed -i 's/GENERATE_MAN           = NO/GENERATE_MAN           = YES/g' doc/bee2.doxy"
+              echo "RUN CFLAGS='-O2 -flto=thin -fexceptions -g -grecord-gcc-switches -pipe -Wall -Werror=format-security -Wp,-U_FORTIFY_SOURCE,-D_FORTIFY_SOURCE=3 -Wp,-D_GLIBCXX_ASSERTIONS --config /usr/lib/rpm/redhat/redhat-hardened-clang.cfg -fstack-protector-strong   -m64  -mtune=generic -fasynchronous-unwind-tables -fstack-clash-protection -fcf-protection -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer'" 
+              echo "RUN CXXFLAGS='-O2 -flto=thin -fexceptions -g -grecord-gcc-switches -pipe -Wall -Werror=format-security -Wp,-U_FORTIFY_SOURCE,-D_FORTIFY_SOURCE=3 -Wp,-D_GLIBCXX_ASSERTIONS --config /usr/lib/rpm/redhat/redhat-hardened-clang.cfg -fstack-protector-strong   -m64  -mtune=generic -fasynchronous-unwind-tables -fstack-clash-protection -fcf-protection -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer'"
+              echo "RUN LDFLAGS='-Wl,-z,relro -Wl,--as-needed  -Wl,-z,now   -flto=thin -fno-openmp-implicit-rpath -Wl,--build-id=sha1 '"
+              echo "RUN cmake -S . -B builddir -DCMAKE_C_FLAGS_RELEASE:STRING=-DNDEBUG -DCMAKE_CXX_FLAGS_RELEASE:STRING=-DNDEBUG -DCMAKE_Fortran_FLAGS_RELEASE:STRING=-DNDEBUG -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON -DCMAKE_INSTALL_DO_STRIP:BOOL=OFF -DCMAKE_INSTALL_PREFIX:PATH=/usr -DINCLUDE_INSTALL_DIR:PATH=/usr/include -DLIB_INSTALL_DIR:PATH=/usr/lib64 -DSYSCONF_INSTALL_DIR:PATH=/etc -DSHARE_INSTALL_PREFIX:PATH=/usr/share -DLIB_SUFFIX=64 -DBUILD_SHARED_LIBS:BOOL=ON -DBUILD_DOC=ON -DCMAKE_C_COMPILER=clang -DBUILD_TESTS=ON -DBUILD_PIC=ON -DCMAKE_BUILD_TYPE=RELEASE"
+              echo "RUN cmake --build builddir --verbose"
+              echo "RUN ctest --test-dir builddir --output-on-failure --force-new-ctest-process"
+          } > podmanfile
+          podman build --tag fedorarawhide -f ./podmanfile
